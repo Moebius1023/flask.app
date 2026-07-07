@@ -1,0 +1,7 @@
+# 环境变量配置（包含密钥）
+.env
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
