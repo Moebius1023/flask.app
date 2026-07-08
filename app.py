@@ -12,6 +12,8 @@
 import re
 import time
 import secrets
+import sqlite3
+import os
 
 from flask import (
     Flask, render_template, request, redirect, session, url_for, abort
@@ -26,6 +28,35 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     PERMANENT_SESSION_LIFETIME=1800,
 )
+
+
+# ---------------------------------------------------------------------------
+# SQLite 数据库初始化
+# ---------------------------------------------------------------------------
+DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DB_PATH = os.path.join(DB_DIR, "users.db")
+
+
+def init_db():
+    """初始化 SQLite 数据库，创建 users 表并插入默认用户"""
+    os.makedirs(DB_DIR, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            email TEXT,
+            phone TEXT
+        )
+    """)
+    # 插入默认用户（明文密码）
+    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone) VALUES ('admin', 'admin123', 'admin@example.com', '13800138000')")
+    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone) VALUES ('alice', 'alice2025', 'alice@example.com', '13900139001')")
+    conn.commit()
+    conn.close()
+    print("[DB] 数据库初始化完成:", DB_PATH)
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +217,11 @@ def index():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
+    success = None
+
+    # 从查询参数获取注册成功消息
+    if request.args.get("registered"):
+        success = "注册成功，请登录"
 
     # 获取客户端 IP
     client_ip = request.remote_addr or "unknown"
@@ -241,7 +277,7 @@ def login():
                 else:
                     error = f"登录失败次数过多，账户已被锁定 {Config.LOGIN_LOCKOUT_MINUTES} 分钟，请稍后再试。"
 
-    return render_template("login.html", error=error)
+    return render_template("login.html", error=error, success=success)
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +287,75 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("index"))
+
+
+# ---------------------------------------------------------------------------
+# 路由：注册
+# ---------------------------------------------------------------------------
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    error = None
+    success = None
+
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        email = request.form.get("email", "")
+        phone = request.form.get("phone", "")
+
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            conn.execute(
+                "INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)",
+                (username, password, email, phone)
+            )
+            conn.commit()
+            success = "注册成功，请登录"
+            return redirect(url_for("login", registered=1))
+        except Exception as e:
+            error = f"注册失败：{str(e)}"
+            print(f"[SQL ERROR] {e}")
+        finally:
+            conn.close()
+
+    return render_template("register.html", error=error)
+
+
+# ---------------------------------------------------------------------------
+# 路由：搜索（使用参数化查询修复 SQL 注入，LIKE 通配符未处理）
+# ---------------------------------------------------------------------------
+@app.route("/search")
+def search():
+    keyword = request.args.get("keyword", "")
+    results = []
+
+    if keyword:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            cursor = conn.execute(
+                "SELECT id, username, email, phone FROM users WHERE username LIKE ? OR email LIKE ?",
+                (f"%{keyword}%", f"%{keyword}%")
+            )
+            results = cursor.fetchall()
+            print(f"[SQL] 参数化查询: LIKE %{keyword}%, 返回 {len(results)} 条结果")
+        except Exception as e:
+            print(f"[SQL ERROR] {e}")
+        finally:
+            conn.close()
+
+    # 获取当前登录用户信息
+    username = session.get("username")
+    user_info = None
+    if username and username in USERS:
+        user_info = get_safe_user_info(username)
+
+    return render_template(
+        "index.html",
+        username=username,
+        user=user_info,
+        search_results=results,
+        search_keyword=keyword,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -275,4 +380,5 @@ def server_error(e):
 # 启动
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    init_db()
     app.run(debug=Config.DEBUG, host="0.0.0.0", port=5000)

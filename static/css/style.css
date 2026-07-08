@@ -194,3 +194,116 @@ body {
     display: inline-block;
     min-width: 70px;
 }
+
+/* 成功提示 */
+.success-msg {
+    background-color: #f0fff4;
+    color: #276749;
+    border: 1px solid #9ae6b4;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+/* 搜索区域 */
+.search-section {
+    margin: 20px 0;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.search-box {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.search-input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.search-input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.search-btn {
+    white-space: nowrap;
+}
+
+.result-count {
+    margin: 12px 0;
+    font-size: 13px;
+    color: #666;
+}
+
+/* 数据表格 */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+.data-table thead {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+}
+
+.data-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    color: #555;
+}
+
+.data-table tbody tr:hover {
+    background-color: #f7fafc;
+}
+
+.no-results {
+    padding: 20px;
+    text-align: center;
+    color: #a0aec0;
+    font-size: 14px;
+}
+
+/* 注册页 */
+.register-card {
+    max-width: 420px;
+    margin: 0 auto;
+}
+
+.register-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-footer {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 14px;
+    color: #888;
+}
+
+.form-footer a {
+    color: #667eea;
+    text-decoration: none;
+}
+
+.form-footer a:hover {
+    text-decoration: underline;
+}

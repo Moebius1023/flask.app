@@ -5,3 +5,6 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# SQLite 数据库文件（运行时自动生成）
+data/

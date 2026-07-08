@@ -5,6 +5,49 @@
     <div class="card">
         <h2 class="card-title">欢迎回来，{{ username }}！</h2>
         <p class="card-text">当前角色：{{ user["role"] }}</p>
+
+        <!-- 搜索功能 -->
+        <div class="search-section">
+            <h3 class="card-subtitle">用户搜索</h3>
+            <form method="GET" action="/search" class="search-form">
+                <div class="search-box">
+                    <input type="text" name="keyword" class="search-input" placeholder="搜索用户名或邮箱..."
+                           value="{{ search_keyword or '' }}">
+                    <button type="submit" class="btn btn-primary search-btn">搜索</button>
+                </div>
+            </form>
+
+            {% if search_keyword %}
+                <div class="search-results">
+                    {% if search_results %}
+                        <p class="result-count">找到 {{ search_results|length }} 条结果（关键词：{{ search_keyword }}）</p>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>用户名</th>
+                                    <th>邮箱</th>
+                                    <th>手机</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in search_results %}
+                                <tr>
+                                    <td>{{ row[0] }}</td>
+                                    <td>{{ row[1] }}</td>
+                                    <td>{{ row[2] }}</td>
+                                    <td>{{ row[3] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="no-results">无搜索结果</div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+
         <a href="/logout" class="btn btn-secondary">退出登录</a>
     </div>
 {% else %}
