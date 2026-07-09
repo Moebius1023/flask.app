@@ -14,9 +14,12 @@ import time
 import secrets
 import sqlite3
 import os
+import uuid
+import base64
 
 from flask import (
-    Flask, render_template, request, redirect, session, url_for, abort
+    Flask, render_template, request, redirect, session, url_for, abort,
+    send_from_directory
 )
 from werkzeug.security import check_password_hash
 from config import Config
@@ -27,6 +30,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     PERMANENT_SESSION_LIFETIME=1800,
+    MAX_CONTENT_LENGTH=16 * 1024 * 1024,
 )
 
 
@@ -35,11 +39,13 @@ app.config.update(
 # ---------------------------------------------------------------------------
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DB_DIR, "users.db")
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "uploads")
 
 
 def init_db():
-    """初始化 SQLite 数据库，创建 users 表并插入默认用户"""
+    """初始化 SQLite 数据库并创建所需目录"""
     os.makedirs(DB_DIR, exist_ok=True)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
@@ -356,6 +362,130 @@ def search():
         search_results=results,
         search_keyword=keyword,
     )
+
+
+# ---------------------------------------------------------------------------
+# 文件上传配置
+# ---------------------------------------------------------------------------
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
+# 常见图片文件魔数（文件头签名）
+IMAGE_SIGNATURES = {
+    b"\xff\xd8\xff": "jpeg",
+    b"\x89PNG\r\n\x1a\n": "png",
+    b"GIF87a": "gif",
+    b"GIF89a": "gif",
+    b"RIFF": "webp",  # WEBP 以 RIFF 开头
+}
+
+
+def check_image_content(file_bytes: bytes) -> bool:
+    """通过魔数校验文件内容是否为真实图片"""
+    for sig in IMAGE_SIGNATURES:
+        if file_bytes.startswith(sig):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# 路由：头像上传（安全加固版）
+# ---------------------------------------------------------------------------
+@app.route("/upload", methods=["GET", "POST"])
+def upload():
+    """文件上传路由，需要登录才能访问"""
+    username = session.get("username")
+    if not username:
+        return redirect(url_for("login"))
+
+    message = None
+    message_type = None
+    file_url = None
+    preview_data_url = None
+    raw_filename = None
+
+    if request.method == "POST":
+        if "file" not in request.files:
+            message = "请选择要上传的文件"
+            message_type = "error"
+        else:
+            f = request.files["file"]
+            if f.filename == "":
+                message = "请选择要上传的文件"
+                message_type = "error"
+            else:
+                # ---- 安全检查 1：路径穿越防护 ----
+                original_filename = os.path.basename(f.filename)
+
+                # ---- 安全检查 2：后缀白名单 ----
+                ext = ""
+                if "." in original_filename:
+                    ext = original_filename.rsplit(".", 1)[1].lower()
+                if ext not in ALLOWED_EXTENSIONS:
+                    message = f"不允许的文件类型（仅支持：{', '.join(sorted(ALLOWED_EXTENSIONS))}）"
+                    message_type = "error"
+                    return render_template(
+                        "upload.html",
+                        username=username,
+                        message=message,
+                        message_type=message_type,
+                    )
+
+                # ---- 安全检查 3：内容真实性校验（魔数） ----
+                file_bytes = f.read()
+                if not check_image_content(file_bytes):
+                    message = "文件内容不是有效的图片格式，请上传真实图片文件"
+                    message_type = "error"
+                    return render_template(
+                        "upload.html",
+                        username=username,
+                        message=message,
+                        message_type=message_type,
+                    )
+
+                try:
+                    # ---- 安全检查 4：UUID 随机文件名 ----
+                    unique_name = f"{uuid.uuid4().hex}.{ext}"
+                    save_path = os.path.join(UPLOAD_DIR, unique_name)
+
+                    # 写入文件
+                    with open(save_path, "wb") as fp:
+                        fp.write(file_bytes)
+
+                    # 生成安全的文件访问 URL（通过 /media/ 路由）
+                    file_url = url_for("media_file", filename=unique_name)
+
+                    # 生成 base64 data URL 用于页面预览
+                    mime_type = f"image/{ext}" if ext != "jpg" else "image/jpeg"
+                    b64_data = base64.b64encode(file_bytes).decode("ascii")
+                    preview_data_url = f"data:{mime_type};base64,{b64_data}"
+
+                    message = "文件上传成功！"
+                    message_type = "success"
+                except Exception as e:
+                    message = f"上传失败：{str(e)}"
+                    message_type = "error"
+
+    return render_template(
+        "upload.html",
+        username=username,
+        message=message,
+        message_type=message_type,
+        file_url=file_url,
+        preview_data_url=preview_data_url,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 路由：安全文件访问（强制纯文本解析，禁止脚本执行）
+# ---------------------------------------------------------------------------
+@app.route("/media/<filename>")
+def media_file(filename):
+    """
+    安全地提供上传文件。
+    - 使用 send_from_directory 限定目录范围（防路径穿越）
+    - 强制 Content-Type: text/plain（防 XSS / 脚本执行）
+    - 浏览器不会渲染 HTML / 执行 PHP / 运行脚本
+    """
+    return send_from_directory(UPLOAD_DIR, filename, mimetype="text/plain")
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,49 @@
+# =====================================================
+# 安全配置 - 上传目录
+# 禁止脚本执行，强制纯文本输出
+# =====================================================
+
+# Apache: 禁止脚本引擎解析
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_cgi.c>
+    Options -ExecCGI
+</IfModule>
+<IfModule mod_suphp.c>
+    suPHP_Engine off
+</IfModule>
+
+# Apache: 禁止 PHP/Python/Perl/JSP 等脚本执行
+<FilesMatch ".+">
+    SetHandler none
+    SetHandler default-handler
+    Options -ExecCGI
+    RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .pl .py .jsp .asp .aspx .shtml .cgi
+    RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .pl .py .jsp .asp .aspx .shtml .cgi
+</FilesMatch>
+
+# Nginx 用户请在配置中添加：
+# location /media/ {
+#     alias /path/to/data/uploads/;
+#     default_type text/plain;
+# }
+
+# 强制所有文件作为纯文本
+ForceType application/octet-stream
+Header set Content-Type "text/plain; charset=utf-8"
+
+# 禁止目录浏览
+Options -Indexes
+
+# 拒绝直接访问常见脚本文件
+<FilesMatch "\.(php|php3|php4|php5|php7|php8|phtml|pl|py|jsp|asp|aspx|shtml|cgi|sh|exe|bat|cmd)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

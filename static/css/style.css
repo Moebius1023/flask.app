@@ -219,6 +219,67 @@ body {
     margin-top: 8px;
 }
 
+.action-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+/* 上传页面 */
+.upload-card {
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.upload-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.file-input {
+    padding: 8px 0;
+    font-size: 14px;
+}
+
+.upload-preview {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+}
+
+.preview-img {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 50%;
+    border: 3px solid #e2e8f0;
+    margin: 12px 0;
+    object-fit: cover;
+}
+
+.file-link-text {
+    font-size: 12px;
+    color: #888;
+    word-break: break-all;
+}
+
+.file-note {
+    font-size: 11px;
+    color: #a0aec0;
+    margin-top: 8px;
+    font-style: italic;
+}
+
+.file-link-text a {
+    color: #667eea;
+    text-decoration: none;
+}
+
+.file-link-text a:hover {
+    text-decoration: underline;
+}
+
 .search-input {
     flex: 1;
     padding: 10px 12px;

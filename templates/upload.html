@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card upload-card">
+    <h2 class="card-title">上传头像</h2>
+
+    {% if message %}
+        {% if message_type == "success" %}
+            <div class="success-msg">{{ message }}</div>
+        {% else %}
+            <div class="error-msg">{{ message }}</div>
+        {% endif %}
+    {% endif %}
+
+    <form method="POST" action="/upload" enctype="multipart/form-data" class="upload-form">
+        <div class="form-group">
+            <label for="file">选择文件（仅支持 JPG/PNG/GIF/WEBP）</label>
+            <input type="file" id="file" name="file" class="file-input" accept=".jpg,.jpeg,.png,.gif,.webp">
+        </div>
+        <button type="submit" class="btn btn-primary">上传</button>
+    </form>
+
+    {% if preview_data_url %}
+        <div class="upload-preview">
+            <h3 class="card-subtitle">预览</h3>
+            <img src="{{ preview_data_url }}" alt="头像预览" class="preview-img">
+            <p class="file-link-text">
+                文件链接：<a href="{{ file_url }}" target="_blank">{{ file_url }}</a>
+            </p>
+            <p class="file-note">注意：访问链接时文件以纯文本方式显示，浏览器不会渲染为可执行脚本。</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
