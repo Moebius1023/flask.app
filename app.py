@@ -354,9 +354,11 @@ def search():
     if keyword:
         conn = sqlite3.connect(DB_PATH)
         try:
+            # 转义 LIKE 通配符，防止 % 和 _ 泄露数据
+            safe_keyword = keyword.replace("%", r"\%").replace("_", r"\_")
             cursor = conn.execute(
-                "SELECT id, username, email, phone FROM users WHERE username LIKE ? OR email LIKE ?",
-                (f"%{keyword}%", f"%{keyword}%")
+                "SELECT id, username, email, phone FROM users WHERE username LIKE ? OR email LIKE ? ESCAPE '\\'",
+                (f"%{safe_keyword}%", f"%{safe_keyword}%")
             )
             results = cursor.fetchall()
             print(f"[SQL] 参数化查询: LIKE %{keyword}%, 返回 {len(results)} 条结果")
