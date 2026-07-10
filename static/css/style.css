@@ -271,6 +271,32 @@ body {
     font-style: italic;
 }
 
+/* 个人中心 */
+.profile-card {
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.profile-info {
+    margin-bottom: 20px;
+}
+
+.recharge-section {
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.recharge-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 12px;
+}
+
+.profile-query-form {
+    margin-top: 16px;
+}
+
 .file-link-text a {
     color: #667eea;
     text-decoration: none;

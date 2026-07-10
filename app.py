@@ -54,12 +54,26 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             email TEXT,
-            phone TEXT
+            phone TEXT,
+            balance REAL DEFAULT 0.0
         )
     """)
-    # 插入默认用户（明文密码）
-    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone) VALUES ('admin', 'admin123', 'admin@example.com', '13800138000')")
-    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone) VALUES ('alice', 'alice2025', 'alice@example.com', '13900139001')")
+    # 尝试添加 balance 列（兼容旧表）
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0.0")
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+    # 插入默认用户（密码使用 pbkdf2 哈希）
+    from werkzeug.security import generate_password_hash
+    default_users = [
+        ("admin", generate_password_hash("admin123"), "admin@example.com", "13800138000", 99999),
+        ("alice", generate_password_hash("alice2025"), "alice@example.com", "13900139001", 100),
+    ]
+    for u in default_users:
+        c.execute(
+            "INSERT OR IGNORE INTO users (username, password, email, phone, balance) VALUES (?, ?, ?, ?, ?)",
+            u
+        )
     conn.commit()
     conn.close()
     print("[DB] 数据库初始化完成:", DB_PATH)
@@ -311,9 +325,11 @@ def register():
 
         conn = sqlite3.connect(DB_PATH)
         try:
+            from werkzeug.security import generate_password_hash
+            hashed_pw = generate_password_hash(password)
             conn.execute(
                 "INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)",
-                (username, password, email, phone)
+                (username, hashed_pw, email, phone)
             )
             conn.commit()
             success = "注册成功，请登录"
@@ -486,6 +502,81 @@ def media_file(filename):
     - 浏览器不会渲染 HTML / 执行 PHP / 运行脚本
     """
     return send_from_directory(UPLOAD_DIR, filename, mimetype="text/plain")
+
+
+# ---------------------------------------------------------------------------
+# 路由：个人中心（根据当前登录用户查询本人资料）
+# ---------------------------------------------------------------------------
+@app.route("/profile")
+def profile():
+    """个人中心，根据 session 中的用户名查询当前用户资料"""
+    username = session.get("username")
+    if not username:
+        return redirect(url_for("login"))
+
+    user_data = None
+    error = None
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.execute(
+        "SELECT id, username, email, phone, balance FROM users WHERE username = ?",
+        (username,)
+    )
+    row = cursor.fetchone()
+    if row:
+        user_data = {
+            "id": row["id"],
+            "username": row["username"],
+            "email": row["email"],
+            "phone": row["phone"],
+            "balance": row["balance"],
+        }
+    else:
+        error = "无法获取用户信息"
+    conn.close()
+
+    return render_template(
+        "profile.html",
+        username=username,
+        user_data=user_data,
+        error=error,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 路由：充值（校验充值金额必须为正数）
+# ---------------------------------------------------------------------------
+@app.route("/recharge", methods=["POST"])
+def recharge():
+    """充值接口，金额必须大于 0"""
+    username = session.get("username")
+    if not username:
+        return redirect(url_for("login"))
+
+    user_id = request.form.get("user_id")
+    amount = request.form.get("amount")
+
+    if not user_id or not amount:
+        return redirect(url_for("profile"))
+
+    try:
+        user_id = int(user_id)
+        amount = float(amount)
+        if amount <= 0:
+            return redirect(url_for("profile"))
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "UPDATE users SET balance = balance + ? WHERE id = ?",
+            (amount, user_id)
+        )
+        conn.commit()
+        conn.close()
+    except (ValueError, TypeError, sqlite3.Error) as e:
+        print(f"[RECHARGE ERROR] {e}")
+
+    return redirect(url_for("profile"))
 
 
 # ---------------------------------------------------------------------------
