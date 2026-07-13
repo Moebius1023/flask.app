@@ -302,6 +302,19 @@ body {
     text-decoration: none;
 }
 
+/* 动态页面内容 */
+.page-content-card {
+    max-width: 720px;
+}
+
+.page-content {
+    font-size: 14px;
+    line-height: 2;
+    color: #444;
+    white-space: pre-wrap;
+    font-family: inherit;
+}
+
 .file-link-text a:hover {
     text-decoration: underline;
 }

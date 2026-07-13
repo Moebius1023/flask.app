@@ -40,7 +40,7 @@ app.config.update(
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DB_DIR, "users.db")
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "uploads")
-
+PAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pages")
 
 def init_db():
     """初始化 SQLite 数据库并创建所需目录"""
@@ -55,23 +55,25 @@ def init_db():
             password TEXT NOT NULL,
             email TEXT,
             phone TEXT,
-            balance REAL DEFAULT 0.0
+            balance REAL DEFAULT 0.0,
+            role TEXT DEFAULT 'user'
         )
     """)
-    # 尝试添加 balance 列（兼容旧表）
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0.0")
-    except sqlite3.OperationalError:
-        pass  # 列已存在
+    # 尝试添加列（兼容旧表）
+    for col in ["balance REAL DEFAULT 0.0", "role TEXT DEFAULT 'user'"]:
+        try:
+            c.execute(f"ALTER TABLE users ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass
     # 插入默认用户（密码使用 pbkdf2 哈希）
     from werkzeug.security import generate_password_hash
     default_users = [
-        ("admin", generate_password_hash("admin123"), "admin@example.com", "13800138000", 99999),
-        ("alice", generate_password_hash("alice2025"), "alice@example.com", "13900139001", 100),
+        ("admin", generate_password_hash("admin123"), "admin@example.com", "13800138000", 99999, "admin"),
+        ("alice", generate_password_hash("alice2025"), "alice@example.com", "13900139001", 100, "user"),
     ]
     for u in default_users:
         c.execute(
-            "INSERT OR IGNORE INTO users (username, password, email, phone, balance) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO users (username, password, email, phone, balance, role) VALUES (?, ?, ?, ?, ?, ?)",
             u
         )
     conn.commit()
@@ -98,29 +100,6 @@ def add_security_headers(response):
 
 
 # ---------------------------------------------------------------------------
-# 用户数据库 — 仅存储 pbkdf2:sha256:600000 加盐哈希值
-# 不包含邮箱、手机、余额等可视为个人信息的字段
-# ---------------------------------------------------------------------------
-USERS = {
-    "admin": {
-        "username": "admin",
-        "password_hash": (
-            "pbkdf2:sha256:600000$CxsVQKRU3hBVy5Jn$"
-            "478523ddec6d1eb67b5d47dfa52f24596968b9c7e33e5a0e88d0b0c7d80bdb2c"
-        ),
-        "role": "admin",
-    },
-    "alice": {
-        "username": "alice",
-        "password_hash": (
-            "pbkdf2:sha256:600000$Yroto8UKuqdawONt$"
-            "9a03cfa7a9baccb15688ad283119913cdba0213c28c0865722beb431b14eee85"
-        ),
-        "role": "user",
-    },
-}
-
-# ---------------------------------------------------------------------------
 # 登录失败记录 — 基于 IP 的速率限制
 # ---------------------------------------------------------------------------
 LOGIN_ATTEMPTS: dict[str, list[float]] = {}
@@ -143,16 +122,22 @@ def sanitize_input(value: str, max_length: int = Config.MAX_INPUT_LENGTH) -> str
 # ---------------------------------------------------------------------------
 def get_safe_user_info(username: str) -> dict | None:
     """
-    获取仅包含标识信息的用户数据。
+    获取仅包含标识信息的用户数据（从 SQLite 查询）。
     密码、邮箱、手机、余额等字段绝不传递到前端。
     """
-    raw = USERS.get(username)
-    if not raw:
-        return None
-    return {
-        "username": raw["username"],
-        "role": raw["role"],
-    }
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT username, role FROM users WHERE username = ?", (username,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return {"username": row["username"], "role": row["role"]}
+    except sqlite3.Error:
+        pass
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -225,9 +210,7 @@ app.jinja_env.globals["csrf_token"] = generate_csrf_token
 @app.route("/")
 def index():
     username = session.get("username")
-    user_info = None
-    if username and username in USERS:
-        user_info = get_safe_user_info(username)
+    user_info = get_safe_user_info(username) if username else None
     return render_template("index.html", username=username, user=user_info)
 
 
@@ -269,13 +252,19 @@ def login():
             error = "请输入密码。"
         elif len(username) > Config.MAX_INPUT_LENGTH:
             error = "用户名过长。"
-        elif username not in USERS:
-            error = "用户名或密码错误。"
-            record_failed_attempt(client_ip)
         else:
-            # ---- 密码验证（使用慢哈希比对） ----
-            stored_hash = USERS[username]["password_hash"]
-            if check_password_hash(stored_hash, password):
+            # ---- 从 SQLite 查询用户（密码使用慢哈希比对） ----
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.execute(
+                "SELECT password FROM users WHERE username = ?", (username,)
+            )
+            row = cursor.fetchone()
+            conn.close()
+
+            if row is None:
+                error = "用户名或密码错误。"
+                record_failed_attempt(client_ip)
+            elif check_password_hash(row[0], password):
                 # 登录成功
                 session.permanent = True
                 session["username"] = username
@@ -369,9 +358,7 @@ def search():
 
     # 获取当前登录用户信息
     username = session.get("username")
-    user_info = None
-    if username and username in USERS:
-        user_info = get_safe_user_info(username)
+    user_info = get_safe_user_info(username) if username else None
 
     return render_template(
         "index.html",
@@ -579,6 +566,48 @@ def recharge():
         print(f"[RECHARGE ERROR] {e}")
 
     return redirect(url_for("profile"))
+
+
+# ---------------------------------------------------------------------------
+# 路由：动态页面加载（不校验路径，不防穿越）
+# ---------------------------------------------------------------------------
+@app.route("/page")
+def dynamic_page():
+    """根据 URL 参数 name 加载 pages/ 目录下的文件"""
+    name = request.args.get("name", "")
+    page_content = None
+    error_msg = None
+
+    if name:
+        # 安全校验：仅允许访问 pages/ 目录内的文件
+        safe_name = name.replace("..", "").replace("/", "").replace("\\", "")
+        if not safe_name:
+            error_msg = "页面不存在"
+        else:
+            file_path = os.path.join(PAGES_DIR, safe_name)
+            if os.path.isfile(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    page_content = f.read()
+            else:
+                # 尝试加 .html 后缀
+                file_path_html = file_path + ".html"
+                if os.path.isfile(file_path_html):
+                    with open(file_path_html, "r", encoding="utf-8") as f:
+                        page_content = f.read()
+                else:
+                    error_msg = "页面不存在"
+
+    # 获取当前用户信息
+    username = session.get("username")
+    user_info = get_safe_user_info(username) if username else None
+
+    return render_template(
+        "index.html",
+        username=username,
+        user=user_info,
+        page_content=page_content,
+        page_error=error_msg,
+    )
 
 
 # ---------------------------------------------------------------------------

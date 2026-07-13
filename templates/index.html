@@ -2,6 +2,18 @@
 
 {% block content %}
 {% if username and user %}
+    {% if page_content %}
+        <div class="card page-content-card">
+            <h2 class="card-title">帮助中心</h2>
+            <div class="page-content">{{ page_content }}</div>
+            <a href="/" class="btn btn-primary" style="margin-top:16px">返回首页</a>
+        </div>
+    {% elif page_error %}
+        <div class="card">
+            <h2 class="card-title">{{ page_error }}</h2>
+            <a href="/" class="btn btn-primary">返回首页</a>
+        </div>
+    {% else %}
     <div class="card">
         <h2 class="card-title">欢迎回来，{{ username }}！</h2>
         <p class="card-text">当前角色：{{ user["role"] }}</p>
@@ -51,9 +63,11 @@
         <div class="action-buttons">
             <a href="/profile" class="btn btn-primary">个人中心</a>
             <a href="/upload" class="btn btn-primary">上传头像</a>
+            <a href="/page?name=help" class="btn btn-primary">帮助中心</a>
             <a href="/logout" class="btn btn-secondary">退出登录</a>
         </div>
     </div>
+    {% endif %}
 {% else %}
     <div class="card">
         <h2 class="card-title">请先登录</h2>
