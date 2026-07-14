@@ -13,6 +13,7 @@
     {% endif %}
 
     <form method="POST" action="/upload" enctype="multipart/form-data" class="upload-form">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <label for="file">选择文件（仅支持 JPG/PNG/GIF/WEBP）</label>
             <input type="file" id="file" name="file" class="file-input" accept=".jpg,.jpeg,.png,.gif,.webp">

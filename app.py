@@ -68,8 +68,8 @@ def init_db():
     # 插入默认用户（密码使用 pbkdf2 哈希）
     from werkzeug.security import generate_password_hash
     default_users = [
-        ("admin", generate_password_hash("admin123"), "admin@example.com", "13800138000", 99999, "admin"),
-        ("alice", generate_password_hash("alice2025"), "alice@example.com", "13900139001", 100, "user"),
+        ("admin", generate_password_hash("admin123", method="pbkdf2:sha256"), "admin@example.com", "13800138000", 99999, "admin"),
+        ("alice", generate_password_hash("alice2025", method="pbkdf2:sha256"), "alice@example.com", "13900139001", 100, "user"),
     ]
     for u in default_users:
         c.execute(
@@ -307,6 +307,11 @@ def register():
     success = None
 
     if request.method == "POST":
+        # ---- CSRF 验证 ----
+        csrf_form_token = request.form.get("_csrf_token", "")
+        if not validate_csrf_token(csrf_form_token):
+            abort(403, description="CSRF 令牌验证失败，请刷新页面重试。")
+
         username = request.form.get("username", "")
         password = request.form.get("password", "")
         email = request.form.get("email", "")
@@ -315,7 +320,7 @@ def register():
         conn = sqlite3.connect(DB_PATH)
         try:
             from werkzeug.security import generate_password_hash
-            hashed_pw = generate_password_hash(password)
+            hashed_pw = generate_password_hash(password, method="pbkdf2:sha256")
             conn.execute(
                 "INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)",
                 (username, hashed_pw, email, phone)
@@ -408,6 +413,11 @@ def upload():
     raw_filename = None
 
     if request.method == "POST":
+        # ---- CSRF 验证 ----
+        csrf_form_token = request.form.get("_csrf_token", "")
+        if not validate_csrf_token(csrf_form_token):
+            abort(403, description="CSRF 令牌验证失败，请刷新页面重试。")
+
         if "file" not in request.files:
             message = "请选择要上传的文件"
             message_type = "error"
@@ -543,6 +553,11 @@ def recharge():
     if not username:
         return redirect(url_for("login"))
 
+    # ---- CSRF 验证 ----
+    csrf_form_token = request.form.get("_csrf_token", "")
+    if not validate_csrf_token(csrf_form_token):
+        abort(403, description="CSRF 令牌验证失败，请刷新页面重试。")
+
     user_id = request.form.get("user_id")
     amount = request.form.get("amount")
 
@@ -569,7 +584,63 @@ def recharge():
 
 
 # ---------------------------------------------------------------------------
-# 路由：动态页面加载（不校验路径，不防穿越）
+# 路由：修改密码（无 CSRF、无原密码校验、可修改任意用户密码）
+# ---------------------------------------------------------------------------
+@app.route("/change-password", methods=["POST"])
+def change_password():
+    """修改密码，需验证原密码和 CSRF"""
+    username = session.get("username")
+    if not username:
+        return redirect(url_for("login"))
+
+    # ---- CSRF 验证 ----
+    csrf_form_token = request.form.get("_csrf_token", "")
+    if not validate_csrf_token(csrf_form_token):
+        abort(403, description="CSRF 令牌验证失败，请刷新页面重试。")
+
+    target_user = request.form.get("username", "")
+    old_password = request.form.get("old_password", "")
+    new_password = request.form.get("new_password", "")
+    confirm_password = request.form.get("confirm_password", "")
+
+    # 只能修改自己的密码
+    if target_user != username:
+        return redirect(url_for("profile"))
+
+    # 验证原密码
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.execute("SELECT password FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return redirect(url_for("profile"))
+
+    from werkzeug.security import check_password_hash, generate_password_hash
+    if not check_password_hash(row[0], old_password):
+        conn.close()
+        return redirect(url_for("profile"))
+
+    # 验证两次新密码一致
+    if not new_password or new_password != confirm_password:
+        conn.close()
+        return redirect(url_for("profile"))
+
+    # 更新密码
+    try:
+        hashed = generate_password_hash(new_password, method="pbkdf2:sha256")
+        conn.execute("UPDATE users SET password = ? WHERE username = ?", (hashed, target_user))
+        conn.commit()
+        print(f"[CHANGE-PASSWORD] 用户 {target_user} 密码已修改")
+    except sqlite3.Error as e:
+        print(f"[CHANGE-PASSWORD ERROR] {e}")
+    finally:
+        conn.close()
+
+    return redirect(url_for("profile"))
+
+
+# ---------------------------------------------------------------------------
+# 路由：动态页面加载
 # ---------------------------------------------------------------------------
 @app.route("/page")
 def dynamic_page():

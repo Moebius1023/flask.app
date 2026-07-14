@@ -407,3 +407,17 @@ body {
 .form-footer a:hover {
     text-decoration: underline;
 }
+
+/* 修改密码 */
+.change-password-section {
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 16px;
+}
+
+.change-password-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 12px;
+}
