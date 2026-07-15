@@ -16,6 +16,9 @@ import sqlite3
 import os
 import uuid
 import base64
+import urllib.request
+import urllib.error
+import socket
 
 from flask import (
     Flask, render_template, request, redirect, session, url_for, abort,
@@ -678,6 +681,132 @@ def dynamic_page():
         user=user_info,
         page_content=page_content,
         page_error=error_msg,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 路由：URL 抓取（SSRF 安全防护版）
+# ---------------------------------------------------------------------------
+def is_private_ip(ip: str) -> bool:
+    """检查 IP 是否为私有/保留地址"""
+    try:
+        addr = int(socket.inet_aton(ip).hex(), 16)
+    except OSError:
+        return False
+    # 127.0.0.0/8
+    if (addr >> 24) == 0x7F:
+        return True
+    # 10.0.0.0/8
+    if (addr >> 24) == 0x0A:
+        return True
+    # 172.16.0.0/12
+    if (addr >> 20) & 0xFFF == 0xAC1:
+        return True
+    # 192.168.0.0/16
+    if (addr >> 16) == 0xC0A8:
+        return True
+    # 169.254.0.0/16 (link-local)
+    if (addr >> 16) == 0xA9FE:
+        return True
+    # 0.0.0.0/8
+    if (addr >> 24) == 0x00:
+        return True
+    # ::1 (IPv6 loopback)
+    if ip == "::1":
+        return True
+    return False
+
+def resolve_and_check(url: str) -> tuple[bool, str]:
+    """解析域名并检查目标是否为内网地址，返回(是否安全, 错误信息)"""
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        if not host:
+            return False, "无效的 URL"
+        # 检查 host 是否为 IP 地址
+        try:
+            socket.inet_aton(host)
+            ip = host
+        except OSError:
+            # 域名解析
+            ip = socket.gethostbyname(host)
+        if is_private_ip(ip):
+            return False, f"目标地址 {ip} 为内网地址，已拦截"
+        return True, ip
+    except socket.gaierror:
+        return False, "域名解析失败"
+    except Exception as e:
+        return False, f"地址检查失败：{str(e)}"
+
+
+@app.route("/fetch-url", methods=["POST"])
+def fetch_url():
+    """抓取用户提交的 URL，带 SSRF 和 CSRF 防护"""
+    username = session.get("username")
+    if not username:
+        return redirect(url_for("login"))
+
+    # ---- CSRF 验证 ----
+    csrf_form_token = request.form.get("_csrf_token", "")
+    if not validate_csrf_token(csrf_form_token):
+        abort(403, description="CSRF 令牌验证失败，请刷新页面重试。")
+
+    url = request.form.get("url", "")
+    fetch_status = None
+    fetch_content = None
+    fetch_error = None
+    fetch_url_input = url
+
+    if url:
+        # ---- 安全检查 1：协议白名单（仅允许 http/https） ----
+        if not url.startswith("http://") and not url.startswith("https://"):
+            fetch_error = "仅支持 http:// 和 https:// 协议"
+            return render_template_with_fetch(username, fetch_error, fetch_url_input)
+
+        # ---- 安全检查 2：DNS 解析 + 内网 IP 拦截 ----
+        safe, result = resolve_and_check(url)
+        if not safe:
+            fetch_error = result
+            return render_template_with_fetch(username, fetch_error, fetch_url_input)
+
+        # ---- 安全检查 3：发起请求（禁用自动重定向，10 秒超时） ----
+        try:
+            req = urllib.request.Request(url)
+            req.method = "GET"
+            # 禁用自动重定向，防止通过重定向跳转到内网
+            class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    return None
+            opener = urllib.request.build_opener(NoRedirectHandler)
+            with opener.open(req, timeout=10) as response:
+                fetch_status = response.status if response.status else 200
+                raw = response.read()
+                content = raw.decode("utf-8", errors="replace")
+                fetch_content = content[:5000]
+        except urllib.error.HTTPError as e:
+            # 3xx 重定向被拦截，状态码仍然返回
+            fetch_status = e.code
+            fetch_content = f"请求被拦截（HTTP {e.code}），不跟随重定向。Location: {e.headers.get('Location', '无')}"
+        except Exception as e:
+            fetch_error = f"抓取失败：{str(e)}"
+
+    return render_template_with_fetch(username, fetch_error, fetch_url_input,
+                                      fetch_status, fetch_content)
+
+
+def render_template_with_fetch(username, fetch_error=None, fetch_url=None,
+                                fetch_status=None, fetch_content=None):
+    """统一渲染首页并传递抓取结果"""
+    user_info = get_safe_user_info(username) if username else None
+    return render_template(
+        "index.html",
+        username=username,
+        user=user_info,
+        fetch_status=fetch_status,
+        fetch_content=fetch_content,
+        fetch_error=fetch_error,
+        fetch_url=fetch_url,
     )
 
 

@@ -60,6 +60,32 @@
             {% endif %}
         </div>
 
+        <!-- URL 抓取功能 -->
+        <div class="fetch-section">
+            <h3 class="card-subtitle">URL 抓取</h3>
+            <form method="POST" action="/fetch-url" class="fetch-form">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <div class="search-box">
+                    <input type="text" name="url" class="search-input" placeholder="输入 URL（仅支持 http/https 协议）"
+                           value="{{ fetch_url or '' }}">
+                    <button type="submit" class="btn btn-primary search-btn">抓取</button>
+                </div>
+            </form>
+
+            {% if fetch_content or fetch_error %}
+                <div class="fetch-results">
+                    {% if fetch_error %}
+                        <div class="error-msg">{{ fetch_error }}</div>
+                    {% elif fetch_content %}
+                        <p class="result-count">状态码：{{ fetch_status }}</p>
+                        <div class="fetch-content-box">
+                            <pre>{{ fetch_content }}</pre>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+
         <div class="action-buttons">
             <a href="/profile" class="btn btn-primary">个人中心</a>
             <a href="/upload" class="btn btn-primary">上传头像</a>
