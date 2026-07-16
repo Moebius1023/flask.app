@@ -19,6 +19,8 @@ import base64
 import urllib.request
 import urllib.error
 import socket
+import subprocess
+import platform
 
 from flask import (
     Flask, render_template, request, redirect, session, url_for, abort,
@@ -808,6 +810,46 @@ def render_template_with_fetch(username, fetch_error=None, fetch_url=None,
         fetch_error=fetch_error,
         fetch_url=fetch_url,
     )
+
+
+# ---------------------------------------------------------------------------
+# 路由：Ping 网络诊断（使用 shell=True，存在命令注入风险）
+# ---------------------------------------------------------------------------
+@app.route("/ping", methods=["GET", "POST"])
+def ping():
+    """Ping 测试，使用列表传参防止命令注入，带 CSRF 防护"""
+    username = session.get("username")
+    if not username:
+        return redirect(url_for("login"))
+
+    result = None
+    ip_input = None
+
+    if request.method == "POST":
+        # ---- CSRF 验证 ----
+        csrf_form_token = request.form.get("_csrf_token", "")
+        if not validate_csrf_token(csrf_form_token):
+            abort(403, description="CSRF 令牌验证失败，请刷新页面重试。")
+
+        ip = request.form.get("ip", "")
+        ip_input = ip
+        if ip:
+            try:
+                # 使用列表传参，禁止 shell=True，彻底防止命令注入
+                output = subprocess.check_output(
+                    ["ping", "-c", "3", ip],
+                    stderr=subprocess.STDOUT,
+                    timeout=30
+                )
+                result = output.decode("utf-8", errors="replace")
+            except subprocess.CalledProcessError as e:
+                result = e.output.decode("utf-8", errors="replace") if e.output else f"Ping 失败（返回码：{e.returncode}）"
+            except subprocess.TimeoutExpired:
+                result = "Ping 超时（30秒）"
+            except Exception as e:
+                result = f"Ping 执行错误：{str(e)}"
+
+    return render_template("ping.html", username=username, result=result, ip_input=ip_input)
 
 
 # ---------------------------------------------------------------------------

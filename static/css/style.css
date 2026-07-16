@@ -456,3 +456,28 @@ body {
     word-break: break-all;
     margin: 0;
 }
+
+/* Ping 测试 */
+.ping-card {
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.ping-output {
+    margin-top: 20px;
+}
+
+.console-output {
+    background: #1a1a2e;
+    color: #00ff88;
+    font-family: "Courier New", Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 500px;
+    overflow: auto;
+}
