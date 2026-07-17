@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card xml-card">
+    <h2 class="card-title">XML 数据导入</h2>
+    <p class="card-text">输入 XML 数据进行解析</p>
+
+    <form method="POST" action="/xml-import" class="xml-form">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="xml_data">XML 数据</label>
+            <textarea id="xml_data" name="xml_data" class="xml-textarea" rows="12" placeholder="请输入 XML 数据...">{{ xml_data }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">导入</button>
+    </form>
+
+    {% if error_msg %}
+        <div class="error-msg">{{ error_msg }}</div>
+    {% endif %}
+
+    {% if result_json %}
+        <div class="xml-result">
+            <h3 class="card-subtitle">解析结果</h3>
+            <pre class="json-output">{{ result_json }}</pre>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

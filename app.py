@@ -21,6 +21,8 @@ import urllib.error
 import socket
 import subprocess
 import platform
+import json
+import xml.etree.ElementTree as ET
 
 from flask import (
     Flask, render_template, request, redirect, session, url_for, abort,
@@ -850,6 +852,61 @@ def ping():
                 result = f"Ping 执行错误：{str(e)}"
 
     return render_template("ping.html", username=username, result=result, ip_input=ip_input)
+
+
+# ---------------------------------------------------------------------------
+# 路由：XML 数据导入（使用安全解析器，禁用外部实体）
+# ---------------------------------------------------------------------------
+@app.route("/xml-import", methods=["GET", "POST"])
+def xml_import():
+    """XML 导入，使用 ElementTree 安全解析，禁用外部实体"""
+    username = session.get("username")
+    if not username:
+        return redirect(url_for("login"))
+
+    result_json = None
+    error_msg = None
+    xml_data = ""
+
+    if request.method == "POST":
+        # ---- CSRF 验证 ----
+        csrf_form_token = request.form.get("_csrf_token", "")
+        if not validate_csrf_token(csrf_form_token):
+            abort(403, description="CSRF 令牌验证失败，请刷新页面重试。")
+
+        xml_data = request.form.get("xml_data", "")
+
+        if xml_data:
+            try:
+                # 使用 ElementTree 安全解析（默认禁用外部实体解析）
+                root = ET.fromstring(xml_data)
+
+                # 提取 user 节点的 name 和 email
+                name_elem = root.find("name")
+                email_elem = root.find("email")
+
+                result = {}
+                if name_elem is not None and name_elem.text:
+                    result["name"] = name_elem.text
+                if email_elem is not None and email_elem.text:
+                    result["email"] = email_elem.text
+
+                result_json = json.dumps(result, ensure_ascii=False, indent=2)
+                if not result:
+                    error_msg = "未在 XML 中找到有效的 user 数据"
+
+            except ET.ParseError as e:
+                error_msg = f"XML 解析失败：格式错误 - {str(e)}"
+            except Exception as e:
+                error_msg = f"XML 解析失败：{str(e)}"
+
+    return render_template(
+        "xml_import.html",
+        username=username,
+        result_json=result_json,
+        error_msg=error_msg,
+        xml_data=xml_data,
+    )
 
 
 # ---------------------------------------------------------------------------
